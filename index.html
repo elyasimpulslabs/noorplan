@@ -82,6 +82,7 @@ button{font:inherit;cursor:pointer}
 .sh .d b{font-weight:600}
 .sh .d span{display:block;font-family:var(--f-mono);font-size:13px;color:var(--muted)}
 .sh .x{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:13px}
+.sh .d span.tag{display:inline-block;font-family:var(--f-body);font-size:10px;color:var(--gold2)}
 .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold2);border:1px solid var(--gold2);border-radius:99px;padding:1px 6px;margin-left:6px}
 .offs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .offs label{font-size:11px}
@@ -123,6 +124,13 @@ nav.tabs button[aria-selected="true"]{color:var(--gold)}
 .alert b{display:block;font-family:var(--f-display);font-weight:600}
 .alert span{font-size:13px;color:var(--muted)}
 .alert button{background:transparent;border:0;color:var(--muted);font-size:18px;padding:0 4px}
+.pauses{display:flex;flex-direction:column;gap:8px}
+.phd{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.prow{display:grid;grid-template-columns:1fr auto 1fr auto;gap:8px;align-items:center}
+.prow span{font-size:12px;color:var(--muted)}
+.prow button{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:8px 10px}
+.plan{grid-column:1/4;font-size:13px;min-width:0}
+.plan b{color:var(--st);font-family:var(--f-mono);font-weight:500}
 details summary{cursor:pointer;font-size:13px;color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.pr,.day{transition:background .2s}}
 </style>
@@ -155,6 +163,11 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
         <label for="fDate">Datum<input type="date" id="fDate" required></label>
         <label for="fStart">Dienstbeginn<input type="time" id="fStart" required value="05:30"></label>
         <label for="fEnd">Dienstende<input type="time" id="fEnd" required value="14:15"></label>
+      </div>
+      <div class="pauses">
+        <div class="phd"><span>Pausen (optional)</span><button type="button" class="btn small ghost" id="addPause">Pause hinzufügen</button></div>
+        <div id="fPauses"></div>
+        <p class="note">Weißt du deine Pausen nicht, lass das Feld leer. Noorplan rechnet dann mit der ganzen Arbeitszeit und plant die Gebete selbst ein.</p>
       </div>
       <label for="fLabel">Notiz (optional)<input type="text" id="fLabel" placeholder="z. B. ICE 375 Karlsruhe nach Basel"></label>
       <button class="btn" type="submit">Dienst speichern</button>
@@ -221,7 +234,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
       </div>
       <p class="note">Für Anfahrt, Umziehen und Übergabe. Diese Zeit zählt Noorplan als belegt.</p>
     </div>
-    <p class="note" style="margin-top:16px">Version 0.3. Deine Daten bleiben auf diesem Gerät gespeichert.</p>
+    <p class="note" style="margin-top:16px">Version 0.4. Deine Daten bleiben auf diesem Gerät gespeichert.</p>
   </section>
 </div>
 
@@ -273,7 +286,7 @@ function prayerTimes(date,lat,lon,cfg){
   if(m0.ishaMin) T.isha=T.maghrib+m0.ishaMin/60; else { const ishaMax=m0.isha/60*night; if(isNaN(T.isha)||fix(T.isha-T.maghrib,24)>ishaMax) T.isha=T.maghrib+ishaMax; }
   const base=new Date(y,m-1,d).getTime(), out={};
   const adj=m0.adj||{};
-  for(const k in T){ const hrs=T[k]+tz-lon/15; const min=Math.round(hrs*60)+(adj[k]||0)+((cfg.offs||{})[k]||0); out[k]=new Date(base+min*60000); }
+  for(const k in T){ const hrs=T[k]+tz-lon/15; const min=Math.round(hrs*60)+(adj[k]||0)+((cfg.offs||{})[k]||0); out[k]=new Date(y,m-1,d,0,min); }
   return out;
 }
 
@@ -289,7 +302,7 @@ function defaultState(){
   const t=new Date();
   return {city:"Karlsruhe",lat:49.0069,lon:8.4037,locMode:"auto",locAt:0,acc:null,notif:{pre:true,start:true,shift:true,eve:true,sound:true,lead:10,warn:15,on:{fajr:true,dhuhr:true,asr:true,maghrib:true,isha:true}},fired:{},method:"DIYANET",asr:1,offs:{fajr:0,sunrise:0,dhuhr:0,asr:0,maghrib:0,isha:0},before:30,after:20,done:{},
     shifts:[
-      {id:"e1",date:dkey(t),start:"11:40",end:"20:10",label:"Beispiel: ICE Umlauf",ex:true},
+      {id:"e1",date:dkey(t),start:"11:40",end:"20:10",label:"Beispiel: ICE Umlauf",ex:true,pauses:[{s:"15:50",e:"16:20"}]},
       {id:"e2",date:dkey(addDays(t,1)),start:"04:50",end:"13:30",label:"Beispiel: Frühdienst",ex:true},
       {id:"e3",date:dkey(addDays(t,3)),start:"17:20",end:"01:40",label:"Beispiel: Spätdienst über Mitternacht",ex:true}
     ]};
@@ -306,7 +319,35 @@ function shiftInterval(s){
   const a=new Date(y,m-1,d,sh,sm); let b=new Date(y,m-1,d,eh,em); if(b<=a) b=addDays(b,1);
   return {a,b,s};
 }
-function busy(){ return S.shifts.map(shiftInterval).map(i=>({a:new Date(i.a-S.before*60000),b:new Date(+i.b+S.after*60000),raw:i})); }
+function pauseIntervals(i){
+  return (i.s.pauses||[]).filter(p=>p.s&&p.e).map(p=>{
+    const at=(t,ref)=>{ const [hh,mm]=t.split(":").map(Number); let d=new Date(i.a); d.setHours(hh,mm,0,0); while(d<ref) d=addDays(d,1); return d; };
+    const a=at(p.s,i.a), b=at(p.e,a); return [+a,+b];
+  }).filter(([a,b])=>b>a&&a<+i.b);
+}
+function busy(){
+  const out=[];
+  for(const i of S.shifts.map(shiftInterval)){
+    let segs=[[+i.a-S.before*60000,+i.b+S.after*60000]];
+    for(const [pa,pb] of pauseIntervals(i)) segs=segs.flatMap(([f,g])=>(pb<=f||pa>=g)?[[f,g]]:[...(pa>f?[[f,pa]]:[]),...(pb<g?[[pb,g]]:[])]);
+    segs.forEach(([a,b])=>out.push({a:new Date(a),b:new Date(b),raw:i}));
+  }
+  return out;
+}
+function inPause(t){ return S.shifts.map(shiftInterval).some(i=>pauseIntervals(i).some(([a,b])=>t>=a&&t<b)); }
+const round5=t=>Math.ceil(t/300000)*300000;
+function plan(win,r){
+  const w0=+win[0], w1=+win[1];
+  if(r.st==="ok") return {at:w0,where:"frei",txt:"Ganzes Zeitfenster frei."};
+  if(r.free.length){
+    const slots=r.free.filter(([f,g])=>g-f>=10*60000), pick=(slots[0]||r.free.slice().sort((x,y)=>(y[1]-y[0])-(x[1]-x[0]))[0]);
+    const where=inPause(pick[0])?"in deiner Pause":pick[1]<w1?"vor dem Dienst":"nach dem Dienst";
+    const others=r.free.filter(s=>s!==pick).map(([f,g])=>`${hm(new Date(f))} bis ${hm(new Date(g))}`);
+    return {at:pick[0],slot:pick,where,txt:`${where[0].toUpperCase()+where.slice(1)} beten: ${hm(new Date(pick[0]))} bis ${hm(new Date(pick[1]))}`+(others.length?` (oder ${others.join(", ")})`:"")+"."};
+  }
+  let at=round5(w0+Math.min(20*60000,(w1-w0)/4)); if(at>w1-15*60000) at=w0;
+  return {at,where:"Gebetspause im Dienst",txt:`Fällt in deine Arbeitszeit. Vorschlag: kurze Gebetspause um ${hm(new Date(at))} (etwa 10 Min.), möglich bis ${hm(win[1])}.`};
+}
 function windowsFor(day){
   const t=prayerTimes(day,S.lat,S.lon,cfg()), tn=prayerTimes(addDays(day,1),S.lat,S.lon,cfg());
   return {fajr:[t.fajr,t.sunrise],dhuhr:[t.dhuhr,t.asr],asr:[t.asr,t.maghrib],maghrib:[t.maghrib,t.isha],isha:[t.isha,tn.fajr],_t:t};
@@ -320,13 +361,7 @@ function analyse(win,B){
   return {st,free};
 }
 const ST={ok:["var(--ok)","frei"],warn:["var(--warn)","teilweise im Dienst"],bad:["var(--bad)","im Dienst"]};
-function advice(p,r,win){
-  if(r.st==="ok") return "Ganzes Zeitfenster frei.";
-  if(r.st==="bad") return `Fenster ${hm(win[0])} bis ${hm(win[1])} liegt komplett im Dienst. Plane eine kurze Pause dafür ein.`;
-  const parts=r.free.map(([f,g])=>`${hm(new Date(f))} bis ${hm(new Date(g))}`);
-  const first=r.free[0][0]===+win[0];
-  return (first?"Vor dem Dienst beten: ":"Nach dem Dienst beten: ")+parts.join(" oder ");
-}
+function advice(p,r,win){ return plan(win,r).txt; }
 
 /* ---------- Render ---------- */
 const $=s=>document.querySelector(s);
@@ -344,7 +379,7 @@ function renderToday(){
   const now=new Date(), W=windowsFor(now), B=busy(), dk=dkey(now);
   $("#todayTitle").textContent=now.toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long"});
   const today=S.shifts.filter(s=>s.date===dk).map(shiftInterval);
-  $("#todayShift").innerHTML= today.length? today.map(i=>`Dienst <strong>${hm(i.a)} bis ${hm(i.b)}</strong>${i.s.label?" · "+esc(i.s.label):""}`).join("<br>") : `Heute kein Dienst eingetragen. Sonnenaufgang ${hm(W._t.sunrise)}.`;
+  $("#todayShift").innerHTML= today.length? today.map(i=>`Dienst <strong>${hm(i.a)} bis ${hm(i.b)}</strong>${pauseIntervals(i).length?" · Pause "+pauseIntervals(i).map(([a,b])=>hm(new Date(a))+" bis "+hm(new Date(b))).join(", "):" · Pausen plant Noorplan"}${i.s.label?" · "+esc(i.s.label):""}`).join("<br>") : `Heute kein Dienst eingetragen. Sonnenaufgang ${hm(W._t.sunrise)}.`;
   let curIdx=-1; PRAYERS.forEach(([k],i)=>{ if(W[k][0]<=now&&now<W[k][1]) curIdx=i; });
   const done=S.done[dk]||{};
   $("#todayList").innerHTML=PRAYERS.map(([k,n,de],i)=>{
@@ -354,7 +389,7 @@ function renderToday(){
       <span class="n">${n}<em>${de}${i===curIdx?" · jetzt":""}</em></span>
       <button class="done${done[k]?" on":""}" data-k="${k}" aria-label="${n} als gebetet markieren" aria-pressed="${!!done[k]}">✓</button>
       <span class="w">bis ${hm(W[k][1])} · <span class="chip">${c[1]}</span></span>
-      ${r.st!=="ok"?`<span class="s">${advice(k,r,W[k])}</span>`:""}
+      ${r.st!=="ok"?(()=>{const pl=plan(W[k],r);return `<span class="plan">Geplant <b>${hm(new Date(pl.at))}</b> · ${pl.txt}</span>`})():""}
     </div>`}).join("");
   document.querySelectorAll(".done").forEach(b=>b.onclick=()=>{ const d=S.done[dk]=S.done[dk]||{}; d[b.dataset.k]=!d[b.dataset.k]; save(); renderToday(); });
 }
@@ -372,7 +407,7 @@ function renderShifts(){
   const today=dkey(new Date());
   const list=S.shifts.filter(s=>s.date>=dkey(addDays(new Date(),-1))).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
   $("#shiftList").innerHTML=list.length?list.map(s=>{const i=shiftInterval(s);
-    return `<div class="sh"><div class="d"><b>${i.a.toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"short"})}</b>${s.ex?'<span class="tag">Beispiel</span>':""}<span>${hm(i.a)} bis ${hm(i.b)}${i.b.getDate()!==i.a.getDate()?" (+1 Tag)":""}${s.label?" · "+esc(s.label):""}</span></div><button class="x" data-id="${s.id}" type="button">Löschen</button></div>`}).join("")
+    return `<div class="sh"><div class="d"><b>${i.a.toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"short"})}</b>${s.ex?'<span class="tag">Beispiel</span>':""}<span>${hm(i.a)} bis ${hm(i.b)}${i.b.getDate()!==i.a.getDate()?" (+1 Tag)":""}${pauseIntervals(i).length?" · Pause "+pauseIntervals(i).map(([a,b])=>hm(new Date(a))+" bis "+hm(new Date(b))).join(", "):""}${s.label?" · "+esc(s.label):""}</span></div><button class="x" data-id="${s.id}" type="button">Löschen</button></div>`}).join("")
     :`<div class="empty">Noch keine Dienste. Trag oben deinen nächsten Dienst ein, dann siehst du sofort, welche Gebete betroffen sind.</div>`;
   document.querySelectorAll(".sh .x").forEach(b=>b.onclick=()=>{ S.shifts=S.shifts.filter(s=>s.id!==b.dataset.id); save(); renderAll(); toast("Dienst gelöscht"); });
   $("#exampleBanner").hidden=!S.shifts.some(s=>s.ex);
@@ -493,8 +528,11 @@ function events(day){
   for(const [k,n] of PRAYERS){ if(!N.on[k]) continue;
     const w=W[k], r=analyse(w,B);
     if(N.pre) out.push({id:`${dk}-${k}-pre`,at:+w[0]-N.lead*60000,t:`${n} in ${N.lead} Minuten`,b:`Beginn um ${hm(w[0])}`+(r.st==="ok"?", Zeitfenster bis "+hm(w[1])+".":". "+advice(k,r,w))});
-    if(N.start) out.push({id:`${dk}-${k}-start`,at:+w[0],t:`Zeit für ${n}`,b:r.st==="bad"?`Liegt komplett in deinem Dienst. Fenster bis ${hm(w[1])}, plane eine kurze Pause.`:r.st==="warn"?advice(k,r,w):`Zeitfenster bis ${hm(w[1])}.`});
-    if(N.shift&&r.st==="warn"){ const slot=r.free.find(([f,g])=>g<+w[1]);
+    const pl=plan(w,r);
+    if(N.start) out.push({id:`${dk}-${k}-start`,at:+w[0],t:`Zeit für ${n}`,b:r.st==="ok"?`Zeitfenster bis ${hm(w[1])}.`:`Geplant um ${hm(new Date(pl.at))}. ${pl.txt}`});
+    if(r.st==="bad") out.push({id:`${dk}-${k}-plan`,at:pl.at,t:`Gebetspause für ${n}`,b:`Jetzt ist ein guter Moment für eine kurze Pause, etwa 10 Minuten. Möglich bis ${hm(w[1])}.`});
+    if(r.st==="warn"&&pl.where==="in deiner Pause"&&pl.at>+w[0]) out.push({id:`${dk}-${k}-pause`,at:pl.at,t:`Deine Pause: Zeit für ${n}`,b:`Frei bis ${hm(new Date(pl.slot[1]))}.`});
+    if(N.shift&&r.st==="warn"){ const slot=r.free.find(([f,g])=>g<+w[1]&&!inPause(f));
       if(slot) out.push({id:`${dk}-${k}-shift`,at:slot[1]-N.warn*60000,t:`${n} jetzt beten`,b:`Dein Dienst beginnt bald. Danach ist das Fenster bis ${hm(w[1])} belegt.`}); }
   }
   if(N.eve){ const tm=addDays(day,1), Wt=windowsFor(tm), hit=PRAYERS.filter(([k])=>N.on[k]&&analyse(Wt[k],B).st!=="ok").map(([k,n])=>n);
@@ -520,10 +558,15 @@ function show(v){
 $("#fDate").value=dkey(addDays(new Date(),1));
 $("#shiftForm").addEventListener("submit",e=>{
   e.preventDefault();
-  S.shifts.push({id:"s"+Date.now(),date:$("#fDate").value,start:$("#fStart").value,end:$("#fEnd").value,label:$("#fLabel").value.trim()});
-  $("#fLabel").value=""; $("#fDate").value=dkey(addDays(new Date($("#fDate").value+"T12:00"),1));
+  const pauses=[...document.querySelectorAll("#fPauses .prow")].map(r=>({s:r.querySelector(".ps").value,e:r.querySelector(".pe").value})).filter(p=>p.s&&p.e);
+  S.shifts.push({id:"s"+Date.now(),date:$("#fDate").value,start:$("#fStart").value,end:$("#fEnd").value,label:$("#fLabel").value.trim(),pauses});
+  $("#fLabel").value=""; $("#fPauses").innerHTML=""; $("#fDate").value=dkey(addDays(new Date($("#fDate").value+"T12:00"),1));
   save(); renderAll(); toast("Dienst gespeichert");
 });
+let pid=0;
+$("#addPause").onclick=()=>{ const n=pid++; const row=document.createElement("div"); row.className="prow";
+  row.innerHTML=`<input type="time" class="ps" id="fp${n}s" aria-label="Pause von"><span>bis</span><input type="time" class="pe" id="fp${n}e" aria-label="Pause bis"><button type="button" aria-label="Pause entfernen">×</button>`;
+  row.querySelector("button").onclick=()=>row.remove(); $("#fPauses").appendChild(row); row.querySelector(".ps").focus(); };
 $("#clearEx").onclick=()=>{ S.shifts=S.shifts.filter(s=>!s.ex); save(); renderAll(); toast("Beispiele gelöscht"); };
 
 initSettings(); renderAll();
