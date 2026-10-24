@@ -149,6 +149,9 @@ nav.tabs button[aria-selected="true"]{color:var(--gold)}
 .sp-word .g{background:linear-gradient(180deg,#f3cf9f,#c99358);-webkit-background-clip:text;background-clip:text;color:transparent}
 .sp-word .w{color:#f6f1ea}
 .sp-tag{font-size:11px;letter-spacing:.42em;text-transform:uppercase;color:#bfb4a7;opacity:0;animation:spTag .9s ease-out 1.85s forwards;padding-left:.42em;text-align:center}
+.sp-by{margin-top:10px;font-size:11px;letter-spacing:.14em;color:#8f857a;opacity:0;animation:spBy .8s ease-out 2.3s forwards}
+.sp-by::before{content:"";display:block;width:24px;height:1px;margin:0 auto 10px;background:linear-gradient(90deg,transparent,#c99358,transparent)}
+@keyframes spBy{0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:none}}
 @keyframes spDraw{to{stroke-dashoffset:0}}
 @keyframes spMoon{0%{opacity:0;transform:translateY(-60px) rotate(-120deg) scale(.4)}60%{opacity:1}100%{opacity:1;transform:none}}
 @keyframes spArL{0%{opacity:0;transform:translate(-90px,40px) rotate(-25deg)}100%{opacity:1;transform:none}}
@@ -183,6 +186,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
     </svg>
     <div class="sp-word" aria-hidden="true"><span class="w" style="--i:0">N</span><span class="w" style="--i:1">O</span><span class="w" style="--i:2">O</span><span class="w" style="--i:3">R</span><span class="g" style="--i:4">P</span><span class="g" style="--i:5">L</span><span class="g" style="--i:6">A</span><span class="g" style="--i:7">N</span></div>
     <div class="sp-tag">Gebetszeiten im Arbeitsalltag</div>
+    <div class="sp-by">by Elyas Saciri</div>
   </div>
 </div>
 <div class="wrap">
@@ -624,7 +628,7 @@ $("#clearEx").onclick=()=>{ S.shifts=S.shifts.filter(s=>!s.ex); save(); renderAl
   const quick=matchMedia("(prefers-reduced-motion: reduce)").matches;
   let gone=false; const end=()=>{ if(gone) return; gone=true; el.classList.add("out"); setTimeout(()=>el.remove(),750); };
   el.addEventListener("click",end);
-  setTimeout(end,quick?700:3300);
+  setTimeout(end,quick?700:3700);
 })();
 initSettings(); renderAll();
 if(S.locMode==="auto") locate(false);
