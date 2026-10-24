@@ -660,5 +660,9 @@ try{ const t=localStorage.getItem(KEY+".tab"); if(t) show(t); }catch(e){}
 setInterval(()=>{renderHeader(); if(!$("#v-heute").hidden) renderToday();},30000);
 </script>
 
-<script>if("serviceWorker" in navigator){addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));}</script>
+<script>if("serviceWorker" in navigator){
+  const had=!!navigator.serviceWorker.controller; let reloaded=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(had&&!reloaded){ reloaded=true; location.reload(); } });
+  addEventListener("load",()=>navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(r=>r.update()).catch(()=>{}));
+}</script>
 </body></html>
