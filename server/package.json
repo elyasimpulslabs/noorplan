@@ -1,0 +1,7 @@
+{
+  "name": "noorplan-push",
+  "private": true,
+  "type": "module",
+  "scripts": { "deploy": "wrangler deploy" },
+  "devDependencies": { "wrangler": "^4.20.0" }
+}

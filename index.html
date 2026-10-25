@@ -108,6 +108,7 @@ nav.tabs button[aria-selected="true"]{color:var(--gold)}
 .results{display:flex;flex-direction:column;gap:4px}
 .results button{background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:10px;padding:9px 12px;text-align:left;display:flex;justify-content:space-between;gap:10px}
 .results button span{color:var(--muted);font-family:var(--f-mono);font-size:12px}
+.pushbox{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding-block:12px}
 .notif-state{display:flex;gap:10px;align-items:center;font-size:14px}
 .notif-state i{flex:none;width:10px;height:10px;border-radius:50%;background:var(--st)}
 .toggles{display:flex;flex-direction:column;gap:2px}
@@ -273,6 +274,13 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
       </div>
       <p class="note">Gebete einzeln an oder aus:</p>
       <div class="offs" id="nPrayers"></div>
+      <div class="pushbox">
+        <div class="notif-state" id="pState"><i></i><span>Push Server noch nicht verbunden.</span></div>
+        <p class="note">Damit Erinnerungen auch bei geschlossener App kommen, schickt sie der Noorplan Server zur richtigen Zeit ans Handy.</p>
+        <label for="pUrl">Server Adresse<input type="url" id="pUrl" inputmode="url" autocomplete="off" placeholder="https://noorplan-push.deinname.workers.dev"></label>
+        <button class="btn" type="button" id="pConnect">Push verbinden</button>
+        <button class="btn ghost" type="button" id="pTest30" hidden>Test in 30 Sekunden (App danach schließen)</button>
+      </div>
       <button class="btn ghost" type="button" id="nTest">Test Benachrichtigung senden</button>
       <p class="note" id="nHint"></p>
     </div>
@@ -293,7 +301,7 @@ details summary{cursor:pointer;font-size:13px;color:var(--muted)}
       </div>
       <p class="note">Für Anfahrt, Umziehen und Übergabe. Diese Zeit zählt Noorplan als belegt.</p>
     </div>
-    <p class="note" style="margin-top:16px">Version 0.4. Deine Daten bleiben auf diesem Gerät gespeichert.</p>
+    <p class="note" style="margin-top:16px">Version 0.5. Deine Daten bleiben auf diesem Gerät gespeichert.</p>
   </section>
 </div>
 
@@ -359,7 +367,7 @@ const hm=d=>d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
 
 function defaultState(){
   const t=new Date();
-  return {city:"Karlsruhe",lat:49.0069,lon:8.4037,locMode:"auto",locAt:0,acc:null,notif:{pre:true,start:true,shift:true,eve:true,sound:true,lead:10,warn:15,on:{fajr:true,dhuhr:true,asr:true,maghrib:true,isha:true}},fired:{},method:"DIYANET",asr:1,offs:{fajr:0,sunrise:0,dhuhr:0,asr:0,maghrib:0,isha:0},before:30,after:20,done:{},
+  return {city:"Karlsruhe",lat:49.0069,lon:8.4037,locMode:"auto",locAt:0,acc:null,pushUrl:"",pushOn:false,pushId:"",pushNext:null,notif:{pre:true,start:true,shift:true,eve:true,sound:true,lead:10,warn:15,on:{fajr:true,dhuhr:true,asr:true,maghrib:true,isha:true}},fired:{},method:"DIYANET",asr:1,offs:{fajr:0,sunrise:0,dhuhr:0,asr:0,maghrib:0,isha:0},before:30,after:20,done:{},
     shifts:[
       {id:"e1",date:dkey(t),start:"11:40",end:"20:10",label:"Beispiel: ICE Umlauf",ex:true,pauses:[{s:"15:50",e:"16:20"}]},
       {id:"e2",date:dkey(addDays(t,1)),start:"04:50",end:"13:30",label:"Beispiel: Frühdienst",ex:true},
@@ -369,7 +377,7 @@ function defaultState(){
 let S;
 try{ S=JSON.parse(localStorage.getItem(KEY))||defaultState(); }catch(e){ S=defaultState(); }
 S=Object.assign(defaultState(),S); S.notif=Object.assign(defaultState().notif,S.notif||{});
-function save(){ try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){} }
+function save(){ try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){} if(typeof queueSync==="function") queueSync(); }
 const cfg=()=>({method:S.method,asr:+S.asr,offs:S.offs});
 
 /* ---------- Dienst Logik ---------- */
@@ -552,6 +560,60 @@ function renderNotif(){
     ? "Hinweis fürs iPhone: Benachrichtigungen kommen zuverlässig, solange Noorplan geöffnet oder im Hintergrund aktiv ist. Für Meldungen bei komplett geschlossener App braucht es die Version mit eigener Adresse auf dem Home Bildschirm."
     : "Auch ohne Erlaubnis zeigt Noorplan alle Hinweise oben in der App an, solange sie offen ist.";
 }
+/* ---------- Push Server ---------- */
+const swOk=()=>"serviceWorker" in navigator&&"PushManager" in window;
+const pushBase=()=>(S.pushUrl||"").trim().replace(/\/+$/,"");
+function uuid(){ const a=crypto.getRandomValues(new Uint8Array(16)); return [...a].map(x=>x.toString(16).padStart(2,"0")).join(""); }
+function b64uToBytes(s){ s=s.replace(/-/g,"+").replace(/_/g,"/"); s+="===".slice((s.length+3)%4); const b=atob(s); return Uint8Array.from(b,c=>c.charCodeAt(0)); }
+function renderPush(msg,color){
+  const el=$("#pState"); let c="var(--warn)", t="Push Server noch nicht verbunden.";
+  if(S.pushOn){ c="var(--ok)"; t="Push aktiv. Erinnerungen kommen auch bei geschlossener App."+(S.pushNext?` Nächste: ${new Date(S.pushNext).toLocaleString("de-DE",{weekday:"short",hour:"2-digit",minute:"2-digit"})}.`:""); }
+  if(msg){ t=msg; c=color||c; }
+  el.style.setProperty("--st",c); el.querySelector("span").textContent=t;
+  $("#pTest30").hidden=!S.pushOn; if(document.activeElement!==$("#pUrl")) $("#pUrl").value=S.pushUrl||"";
+}
+function upcomingEvents(){
+  const now=Date.now(), today=new Date(), list=[];
+  for(let d=-1; d<21; d++) for(const e of events(addDays(today,d))) if(e.at>now) list.push({at:e.at,id:e.id,t:e.t,b:e.b});
+  return list;
+}
+let lastSync="", syncTimer=null;
+function queueSync(){ if(!S.pushOn) return; clearTimeout(syncTimer); syncTimer=setTimeout(syncPush,2500); }
+async function syncPush(force){
+  if(!S.pushOn||!pushBase()||!swOk()) return;
+  try{
+    const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription();
+    if(!sub){ S.pushOn=false; save(); renderPush("Push Abo fehlt. Tippe auf Push verbinden.","var(--warn)"); return; }
+    const payload={id:S.pushId,sub:sub.toJSON(),events:upcomingEvents()};
+    const key=JSON.stringify([payload.sub.endpoint,payload.events.map(e=>e.id+e.at+e.b)]);
+    if(!force&&key===lastSync) return;
+    const r=await fetch(pushBase()+"/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error||r.status);
+    lastSync=key; S.pushNext=j.next; save(); renderPush();
+  }catch(e){ renderPush("Server nicht erreichbar. Erinnerungen kommen gerade nur bei offener App.","var(--bad)"); }
+}
+async function connectPush(){
+  S.pushUrl=$("#pUrl").value.trim(); save();
+  if(!pushBase().startsWith("https://")){ renderPush("Bitte die Server Adresse mit https:// eintragen.","var(--bad)"); return; }
+  if(!swOk()){ renderPush("Push geht nur, wenn Noorplan über das Icon auf dem Home Bildschirm geöffnet ist.","var(--bad)"); return; }
+  try{
+    if(Notification.permission!=="granted"){ const r=await Notification.requestPermission(); if(r!=="granted"){ renderPush("Benachrichtigungen sind nicht erlaubt.","var(--bad)"); renderNotif(); return; } }
+    renderPush("Verbinde …","var(--warn)");
+    const kr=await fetch(pushBase()+"/vapid"); const {key}=await kr.json();
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(sub&&sub.options&&sub.options.applicationServerKey){ const cur=new Uint8Array(sub.options.applicationServerKey); const want=b64uToBytes(key); if(cur.length!==want.length||cur.some((x,i)=>x!==want[i])){ await sub.unsubscribe(); sub=null; } }
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64uToBytes(key)});
+    if(!S.pushId) S.pushId=uuid();
+    S.pushOn=true; save(); await syncPush(true); toast("Push verbunden");
+  }catch(e){ S.pushOn=false; save(); renderPush("Verbindung fehlgeschlagen: "+(e.message||e),"var(--bad)"); }
+}
+async function testPush(){
+  try{ const r=await fetch(pushBase()+"/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:S.pushId,delay:30})});
+    const j=await r.json(); if(!r.ok) throw new Error(j.error);
+    renderPush("Test kommt in 30 Sekunden. Schließ die App jetzt ganz.","var(--ok)"); }
+  catch(e){ renderPush("Test fehlgeschlagen: "+(e.message||e),"var(--bad)"); }
+}
 function initNotif(){
   ["pre","start","shift","eve","sound"].forEach(k=>$("#n"+k[0].toUpperCase()+k.slice(1)).onchange=e=>{S.notif[k]=e.target.checked;save();renderNotif()});
   $("#nLead").onchange=e=>{S.notif.lead=+e.target.value;save();renderNotif()};
@@ -562,7 +624,8 @@ function initNotif(){
     renderNotif(); };
   $("#nTest").onclick=()=>{ unlockAudio(); notify("Test von Noorplan","So sieht eine Erinnerung aus. Dhuhr beginnt in 10 Minuten.","test"+Date.now()); };
   $("#alertX").onclick=()=>$("#alert").hidden=true;
-  renderNotif();
+  $("#pConnect").onclick=connectPush; $("#pTest30").onclick=testPush;
+  renderNotif(); renderPush();
 }
 let actx=null;
 function unlockAudio(){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)(); actx.resume(); }catch(e){} }
@@ -575,7 +638,7 @@ let alertTimer;
 async function notify(title,body,tag){
   $("#alertT").textContent=title; $("#alertB").textContent=body; $("#alert").hidden=false;
   clearTimeout(alertTimer); alertTimer=setTimeout(()=>$("#alert").hidden=true,20000); chime();
-  if(permState()!=="granted") return;
+  if(permState()!=="granted"||(S.pushOn&&!String(tag).startsWith("test"))) return;
   try{
     const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();
     if(reg) await reg.showNotification(title,{body,tag,icon:"icon-192.png",badge:"icon-192.png"});
@@ -654,7 +717,7 @@ function startSound(){
 initSettings(); renderAll();
 if(S.locMode==="auto") locate(false);
 setInterval(()=>{ if(S.locMode==="auto") locate(false); },15*60000);
-initNotif(); checkNotif(); setInterval(checkNotif,20000);
+initNotif(); checkNotif(); setInterval(checkNotif,20000); syncPush(true);
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ checkNotif(); renderNotif(); } });
 try{ const t=localStorage.getItem(KEY+".tab"); if(t) show(t); }catch(e){}
 setInterval(()=>{renderHeader(); if(!$("#v-heute").hidden) renderToday();},30000);
